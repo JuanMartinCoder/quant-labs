@@ -8,7 +8,7 @@ dependencies = [
     "numpy>=1.26.0",
     "pandas>=2.2.0",
     "scipy>=1.12.0",
-    "yfinance>=0.2.40",
+    "yfinance>=0.2.50",
     "matplotlib>=3.8.0",
     "seaborn>=0.13.0",
 ]
