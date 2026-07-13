@@ -14,6 +14,13 @@ class QuantPlotter:
     """Clase encargada de generar visualizaciones financieras avanzadas."""
 
     @staticmethod
+    def plot_equity_curve(ax, equity_series: pd.Series, title: str):
+        ax.plot(equity_series)
+        ax.set_title(title)
+        ax.grid(True, alpha=0.3)
+
+
+    @staticmethod
     def graficar_frontera_eficiente(retornos: pd.DataFrame, 
                                     periodos_ano: int = 252) -> None:
         """

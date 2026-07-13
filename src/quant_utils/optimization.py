@@ -9,53 +9,42 @@ class PortfolioOptimizer:
     """Clase encargada de ejecutar algoritmos de optimización de portafolios."""
 
     @staticmethod 
-    def max_sharpe(retornos: pd.DataFrame, 
-                   pesos_actuales: np.ndarray = None,
-                   tasa_libre_riesgo: float = 0.0, 
-                   periodos_ano: int = 252,
-                   max_peso: float = 1.0,
-                   factor_penalizacion: float = 0.1) -> np.ndarray:
+    def get_max_sharpe(retornos: pd.DataFrame, 
+                       pesos_previos: np.ndarray = None, 
+                       tasa_libre_riesgo: float = 0.0,
+                       max_peso: float = 1.0,
+                       gamma: float = 0.0) -> np.ndarray:
         """
         Encuentra los pesos que maximizan el Ratio de Sharpe.
+
+        Optimización robusta:
+        - Si pesos_previos es None, asume pesos iguales iniciales.
+        - gamma: Factor de penalización por turnover (0 = sin penalización).
         """
-        num_activos = len(retornos.columns)
+        num_activos = retornos.shape[1]
         
-        if pesos_actuales is None:
-            pesos_actuales = np.zeros(len(retornos.columns))
-        # Función objetivo: Minimizar el Sharpe negativo es equivalente a maximizar el Sharpe positivo
-        def funcion_objetivo(pesos: np.ndarray) -> float:
-            ret_p, vol_p = FinancialStats.metricas_portafolio(pesos, retornos, periodos_ano)
-            sharpe = (ret_p - tasa_libre_riesgo) / vol_p
+        # 1. Normalización de inputs
+        if pesos_previos is None:
+            pesos_previos = np.ones(num_activos) / num_activos
 
-            if np.sum(pesos_actuales) == 0:
-                costo_rotacion = 0.0
-            else:
-                costo_rotacion = np.sum(np.abs(pesos - pesos_actuales)) * factor_penalizacion
-
-            return -sharpe + costo_rotacion
-
-        # Restricciones de igualdad: sum(w) = 1  --> sum(w) - 1 = 0
-        restricciones = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1})
-        
-        # Límites: Pesos entre 0 y 1 por activo (No short-selling, no apalancamiento)
-        limites = tuple((0.0, max_peso) for _ in range(num_activos))
-
-        
-        # Conjetura inicial: Distribución equitativa
-        x0 = pesos_actuales if np.sum(pesos_actuales) > 0 else np.array([1.0 / num_activos] * num_activos)
-        
-        resultado = minimize(
-            fun=funcion_objetivo,
-            x0=x0,
-            method='SLSQP',
-            bounds=limites,
-            constraints=restricciones
-        )
-        
-        if not resultado.success:
-            raise ValueError(f"La optimización falló: {resultado.message}")
+        def objective(pesos):
+            retorno_portafolio = np.sum(retornos.mean() * pesos) * 252
+            volatilidad_portafolio = np.sqrt(np.dot(pesos.T, np.dot(retornos.cov() * 252, pesos)))
             
-        return resultado.x
+            # Sharpe Ratio tradicional: (Rp - Rf) / sigma
+            sharpe = (retorno_portafolio - tasa_libre_riesgo) / volatilidad_portafolio
+            
+            # Penalización por turnover = gamma * sum(abs(pesos - pesos_previos))
+            return -sharpe + (gamma * np.sum(np.abs(pesos - pesos_previos)))
+
+        # 3. Restricciones y límites (fijos y robustos)
+        constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+        bounds = [(0, max_peso) for _ in range(num_activos)]
+        
+        # 4. Optimización
+        res = minimize(objective, x0=pesos_previos, bounds=bounds, constraints=constraints)
+        
+        return res.x if res.success else pesos_previos
 
     @staticmethod
     def minima_volatilidad(retornos: pd.DataFrame, periodos_ano: int = 252) -> np.ndarray:
