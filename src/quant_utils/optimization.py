@@ -11,7 +11,8 @@ class PortfolioOptimizer:
     @staticmethod 
     def max_sharpe(retornos: pd.DataFrame, 
                    tasa_libre_riesgo: float = 0.0, 
-                   periodos_ano: int = 252) -> np.ndarray:
+                   periodos_ano: int = 252,
+                   max_peso: float = 1.0) -> np.ndarray:
         """
         Encuentra los pesos que maximizan el Ratio de Sharpe.
         """
@@ -27,7 +28,7 @@ class PortfolioOptimizer:
         restricciones = ({'type': 'eq', 'fun': lambda w: np.sum(w) - 1})
         
         # Límites: Pesos entre 0 y 1 por activo (No short-selling, no apalancamiento)
-        limites = tuple((0.0, 1.0) for _ in range(num_activos))
+        limites = tuple((0.0, max_peso) for _ in range(num_activos))
         
         # Conjetura inicial: Distribución equitativa
         pesos_iniciales = np.array([1.0 / num_activos] * num_activos)
