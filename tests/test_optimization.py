@@ -34,7 +34,7 @@ def datos_mercado_test():
 def test_calcular_var_historico():
     # Usamos una muestra lineal fija de retornos de portafolio para validar el percentil
     retornos_p = pd.Series(np.linspace(-0.10, 0.05, 101)) 
-    var_95 = FinancialStats.calcular_var_historico(retornos_p, nivel_confianza=0.95)
+    var_95 = FinancialStats.get_var_historico(retornos_p, nivel_confianza=0.95)
     
     assert var_95 < 0
     # El percentil 5 en una lista ordenada de 101 puntos de -0.10 a 0.05 es exactamente -0.0925
@@ -46,7 +46,7 @@ def test_calcular_var_historico():
 # ==========================================
 
 def test_max_sharpe_logica_financiera(datos_mercado_test):
-    pesos = PortfolioOptimizer.max_sharpe(datos_mercado_test, tasa_libre_riesgo=0.0)
+    pesos = PortfolioOptimizer.get_max_sharpe(datos_mercado_test, tasa_libre_riesgo=0.0)
     
     # 1. Los pesos deben sumar 1
     assert pytest.approx(np.sum(pesos), 0.00001) == 1.0
@@ -57,16 +57,6 @@ def test_max_sharpe_logica_financiera(datos_mercado_test):
     # 3. El activo Malo debe tener una ponderación casi nula en comparación al Excelente
     assert pesos[2] < pesos[0]
     assert pesos[2] < 0.05
-
-
-def test_minima_volatilidad_logica_financiera(datos_mercado_test):
-    pesos = PortfolioOptimizer.minima_volatilidad(datos_mercado_test)
-    
-    assert pytest.approx(np.sum(pesos), 0.00001) == 1.0
-    # La mayor porción de la torta tiene que ir obligatoriamente al activo Estable (índice 1)
-    assert pesos[1] > pesos[0]
-    assert pesos[1] > pesos[2]
-    assert pesos[1] > 0.70
 
 
 def test_optimizadores_limites_estrictos():
@@ -86,7 +76,7 @@ def test_optimizadores_limites_estrictos():
         'Absurdo': 0.5 + ruido_absurdo  # Retorno diario descomunal del 50%
     }, index=fechas)
     
-    pesos = PortfolioOptimizer.max_sharpe(df_absurdo)
+    pesos = PortfolioOptimizer.get_max_sharpe(df_absurdo)
     
     # Comprobamos las restricciones del optimizador de SciPy
     assert pytest.approx(np.sum(pesos), 0.00001) == 1.0

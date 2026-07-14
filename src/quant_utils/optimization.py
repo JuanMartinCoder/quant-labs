@@ -27,24 +27,48 @@ class PortfolioOptimizer:
         if pesos_previos is None:
             pesos_previos = np.ones(num_activos) / num_activos
 
+        retornos_simples = np.exp(retornos) - 1
+        media_anual = retornos_simples.mean() * 252
+        cov_anual = retornos_simples.cov() * 252
+
         def objective(pesos):
-            retorno_portafolio = np.sum(retornos.mean() * pesos) * 252
-            volatilidad_portafolio = np.sqrt(np.dot(pesos.T, np.dot(retornos.cov() * 252, pesos)))
+            retorno_portafolio = np.sum(media_anual * pesos)
+            volatilidad_portafolio = np.sqrt(np.dot(pesos.T, np.dot(cov_anual, pesos)))
             
-            # Sharpe Ratio tradicional: (Rp - Rf) / sigma
+            if volatilidad_portafolio == 0:
+                return 0.0
+                
+            # Sharpe Ratio tradicional
             sharpe = (retorno_portafolio - tasa_libre_riesgo) / volatilidad_portafolio
             
-            # Penalización por turnover = gamma * sum(abs(pesos - pesos_previos))
-            return -sharpe + (gamma * np.sum(np.abs(pesos - pesos_previos)))
-
+            # Penalización por Turnover (Costo de transacción estimado/Fricción)
+            # Al buscar minimizar la función, sumamos el costo para penalizar el desvío
+            turnover = np.sum(np.abs(pesos - pesos_previos))
+            
+            return -sharpe + (gamma * turnover)
         # 3. Restricciones y límites (fijos y robustos)
         constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
         bounds = [(0, max_peso) for _ in range(num_activos)]
         
-        # 4. Optimización
-        res = minimize(objective, x0=pesos_previos, bounds=bounds, constraints=constraints)
-        
-        return res.x if res.success else pesos_previos
+        try:
+            res = minimize(
+                fun=objective, 
+                x0=pesos_previos, 
+                bounds=bounds, 
+                constraints=constraints,
+                method='SLSQP',
+                options={'ftol': 1e-7, 'maxiter': 200}
+            )
+            
+            if res.success:
+                return res.x
+            else:
+                # Si falla SLSQP, devolvemos un fallback limpio (1/N) o el previo mitigado
+                return pesos_previos
+                
+        except Exception:
+            return pesos_previos
+
 
     @staticmethod
     def minima_volatilidad(retornos: pd.DataFrame, periodos_ano: int = 252) -> np.ndarray:

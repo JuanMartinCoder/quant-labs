@@ -1,56 +1,83 @@
-# src/quant_utils/brokers.py
-
 from abc import ABC, abstractmethod
+import pandas as pd
 
-class BaseBroker(ABC):
-    """Clase base abstracta para modelar las comisiones de cualquier Broker."""
+# =====================================================================
+# INTFAZ BASE (ESTRATEGIA)
+# =====================================================================
+class BrokerStrategy(ABC):
+    """Interfaz abstracta que define las reglas impositivas de cualquier Broker."""
     
     @abstractmethod
-    def calcular_costo_transaccion(self, valor_operado: float) -> float:
-        """Devuelve el costo total en dólares/moneda local por una operación."""
+    def calcular_friccion(self, volumen_nominal: float) -> dict:
         pass
 
 
-class Inviu(BaseBroker):
-    """Modelo para el broker argentino Inviu.
-    Aplica para operaciones en Mercado Local (Acciones, Bonos, CEDEARs, ONs).
-    """
-    def __init__(self, con_asesor: bool = False, derechos_mercado: float = 0.0008, considerar_iva: bool = True):
-        """
-        Parameters:
-        -----------
-        con_asesor : bool
-            Si es True usa 1.50%. Si es False (autogestionado) usa 2.00%.
-        derechos_mercado : float
-            Arancel promedio de BYMA + tasas regulatorias (default 0.08%).
-        considerar_iva : bool
-            Si es True, le aplica el 21% de IVA al fee neto del broker.
-        """
-        # Según tabla: Sin asesor es hasta 2.00%, Con asesor hasta 1.50%
-        base_fee = 0.015 if con_asesor else 0.020
+# =====================================================================
+# ESTRATEGIAS CONCRETAS: INVIU 
+# =====================================================================
+class InviuSinAsesor(BrokerStrategy):
+    def calcular_friccion(self, volumen_nominal: float) -> dict:
+        # Según imagen_2.png: Hasta 2,00% por monto operado
+        arancel_neto = volumen_nominal * 0.02
+        iva = arancel_neto * 0.21
+        return {
+            "aranceles_netos": arancel_neto,
+            "iva_sobre_comisiones": iva,
+            "friccion_total": arancel_neto + iva,
+            "detalle_broker": "Inviu SA (Sin Asesor - Arancel: 2.0% + IVA)"
+        }
+
+class InviuConAsesor(BrokerStrategy):
+    def calcular_friccion(self, volumen_nominal: float) -> dict:
+        # Según imagen_2.png: Hasta 1,50% por monto operado
+        arancel_neto = volumen_nominal * 0.015
+        iva = arancel_neto * 0.21
+        return {
+            "aranceles_netos": arancel_neto,
+            "iva_sobre_comisiones": iva,
+            "friccion_total": arancel_neto + iva,
+            "detalle_broker": "Inviu SA (Con Asesor - Arancel: 1.5% + IVA)"
+        }
+
+
+# =====================================================================
+# EL MOTOR DEL BROKER (CONTEXTO) Y LA FÁBRICA
+# =====================================================================
+class BrokerEngine:
+    def __init__(self, broker_strategy: BrokerStrategy):
+        self.broker = broker_strategy
+
+    def simular_costos_operativos(self, df_pesos: pd.DataFrame, capital_inicial: float = 10000.0) -> dict:
+        """Calcula el turnover e inyecta la fricción según el Broker elegido."""
+        # Cambios absolutos en las ponderaciones entre periodos (t vs t-1)
+        cambios_pesos = df_pesos.diff().abs().sum(axis=1)
+        cambios_pesos.iloc[0] = df_pesos.iloc[0].abs().sum() # Primer rebalanceo
         
-        if considerar_iva:
-            self.broker_fee = base_fee * 1.21
-        else:
-            self.broker_fee = base_fee
-            
-        self.derechos_mercado = derechos_mercado
+        turnover_acumulado = cambios_pesos.sum()
+        volumen_bruto_nominal = turnover_acumulado * capital_inicial
+        
+        # Delegamos el cálculo a la estrategia del broker inyectado
+        costos_broker = self.broker.calcular_friccion(volumen_bruto_nominal)
+        
+        return {
+            "volumen_nominal_operado": volumen_bruto_nominal,
+            "veces_rotado_capital": turnover_acumulado,
+            "aranceles_netos": costos_broker["aranceles_netos"],
+            "iva_sobre_comisiones": costos_broker["iva_sobre_comisiones"],
+            "friccion_total_acumulada": costos_broker["friccion_total"],
+            "label_broker": costos_broker["detalle_broker"]
+        }
 
-    def calcular_costo_transaccion(self, valor_operado: float) -> float:
-        # Costo total = (Comisión Broker + Derechos de Mercado) * Monto Operado
-        fee_total_porcentual = self.broker_fee + self.derechos_mercado
-        return valor_operado * fee_total_porcentual
-
-
-class BrokerPorcentualGenerico(BaseBroker):
-    """Modelo para brokers que cobran un esquema de porcentaje neto + impuestos.
-    Sirve para brokers locales (ej. PPI, Balanz) o fintechs (ej. Robinhood con fee cripto).
-    """
-    def __init__(self, porcentaje_comision: float = 0.002, porcentaje_impuesto: float = 0.0001):
-        self.fee = porcentaje_comision
-        self.tax = porcentaje_impuesto
-
-    def calcular_costo_transaccion(self, valor_operado: float) -> float:
-        comision = valor_operado * self.fee
-        impuestos = valor_operado * self.tax
-        return comision + impuestos
+class BrokerFactory:
+    """Fábrica estática para instanciar brokers de forma limpia mediante strings."""
+    _brokers = {
+        "inviu_sin_asesor": InviuSinAsesor,
+        "inviu_con_asesor": InviuConAsesor
+    }
+    
+    @classmethod
+    def obtener_broker(cls, nombre_broker: str) -> BrokerEngine:
+        broker_class = cls._brokers.get(nombre_broker.lower())
+        if not broker_class:
+            raise ValueError(f"El broker '{nombre_broker}' no está registrado en el sistema.")
+        return BrokerEngine(broker_class())
