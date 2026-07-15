@@ -81,13 +81,25 @@ class ReportGenerator:
         self.elements.append(Spacer(1, 8))
         
         # Renderizado de Tabla de KPIs con formateo condicional de colores (Rojo/Verde)
-        kpi_table_data = [[Paragraph(col, self.styles['TableHeader']) for col in ["ESTRATEGIA", "RETORNO", "VOLATILIDAD", "SHARPE", "SORTINO", "MAX DD", "CALMAR"]]]
+        kpi_table_data = [[Paragraph(col, self.styles['TableHeader']) for col in ["ESTRATEGIA", "RETORNO", "VOLATILIDAD", "SHARPE", "SORTINO", "MAX DD", "CALMAR","ALPHA (α) ANUAL"]]]
         
         for row in df_kpis:
             # Lógica para colorear condicionalmente MaxDD (Rojo) y Calmar (Verde)
             style_dd = ParagraphStyle('dd', parent=self.styles['TableCell'], textColor=colors.HexColor(InstitutionalStyle.DANGER_COLOR), fontName=InstitutionalStyle.FONT_BOLD)
             style_calmar = ParagraphStyle('cl', parent=self.styles['TableCell'], textColor=colors.HexColor(InstitutionalStyle.SUCCESS_COLOR), fontName=InstitutionalStyle.FONT_BOLD)
             
+            # Lógica para colorear condicionalmente Alpha (Rojo) y Calmar (Verde)
+            if row[7] > 0.00:
+                style_alpha = ParagraphStyle('alpha', parent=self.styles['TableCell'], textColor=colors.HexColor(InstitutionalStyle.SUCCESS_COLOR), fontName=InstitutionalStyle.FONT_BOLD)
+            elif row[7] < 0.00:
+                style_alpha = ParagraphStyle('alpha', parent=self.styles['TableCell'], textColor=colors.HexColor(InstitutionalStyle.DANGER_COLOR), fontName=InstitutionalStyle.FONT_BOLD)
+            else:
+                style_alpha = self.styles['TableCell']
+
+            alpha = f"{row[7]:.2%}"
+            if row[7] > 0.00:
+                alpha = f"+{alpha}"
+
             kpi_table_data.append([
                 Paragraph(str(row[0]), self.styles['TableCell']),
                 Paragraph(f"{row[1]:.2%}", self.styles['TableCell']),
@@ -95,7 +107,8 @@ class ReportGenerator:
                 Paragraph(f"{row[3]:.2f}", self.styles['TableCell']),
                 Paragraph(f"{row[4]:.2f}", self.styles['TableCell']),
                 Paragraph(f"{row[5]:.2%}", style_dd),
-                Paragraph(f"{row[6]:.2f}", style_calmar)
+                Paragraph(f"{row[6]:.2f}", style_calmar),
+                Paragraph(alpha, style_alpha)
             ])
             
         t_kpi = Table(kpi_table_data, colWidths=[130, 65, 75, 55, 55, 65, 55])
